@@ -179,7 +179,7 @@ export default function PresentationManager() {
             <CardContent>
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground">
-                  <p>Intervalo: {presentation.refresh_interval}s</p>
+                  <p>Intervalo: {presentation.refresh_interval}min</p>
                   <p>Status: {presentation.is_public ? 'Público' : 'Privado'}</p>
                   <p>Criado: {new Date(presentation.created_at).toLocaleDateString('pt-BR')}</p>
                 </div>

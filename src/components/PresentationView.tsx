@@ -38,7 +38,7 @@ export default function PresentationView() {
 
     const timer = setTimeout(() => {
       setCurrentIndex((prev) => (prev + 1) % items.length);
-    }, currentItem.display_time * 1000);
+    }, currentItem.display_time * 60000);
 
     return () => clearTimeout(timer);
   }, [currentIndex, items]);

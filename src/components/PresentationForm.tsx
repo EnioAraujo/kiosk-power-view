@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, GripVertical, Image, BarChart3 } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Image, BarChart3, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -129,7 +129,7 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
       type,
       title: type === 'image' ? 'Nova Imagem' : 'Novo Dashboard',
       url: '',
-      display_time: 10,
+      display_time: 1,
       order_index: items.length,
     };
     
@@ -143,6 +143,34 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
   const deleteItem = (id: string) => {
     if (window.confirm('Tem certeza que deseja remover este item?')) {
       deleteItemMutation.mutate(id);
+    }
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, itemId: string) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Upload to Supabase Storage
+      const fileName = `${Date.now()}_${file.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('presentation-images')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('presentation-images')
+        .getPublicUrl(fileName);
+
+      // Update item with the new URL
+      updateItem(itemId, { url: publicUrl });
+      
+      toast.success('Imagem carregada com sucesso!');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Erro ao carregar imagem');
     }
   };
 
@@ -165,17 +193,22 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
         </div>
         
         <div>
-          <Label htmlFor="refresh-interval">Intervalo de Atualização (segundos)</Label>
+          <Label htmlFor="refresh-interval">Intervalo de Atualização (minutos)</Label>
           <Select value={refreshInterval.toString()} onValueChange={(value) => setRefreshInterval(parseInt(value))}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="5">5 segundos</SelectItem>
-              <SelectItem value="10">10 segundos</SelectItem>
-              <SelectItem value="15">15 segundos</SelectItem>
-              <SelectItem value="30">30 segundos</SelectItem>
-              <SelectItem value="60">1 minuto</SelectItem>
+              <SelectItem value="1">1 minuto</SelectItem>
+              <SelectItem value="2">2 minutos</SelectItem>
+              <SelectItem value="3">3 minutos</SelectItem>
+              <SelectItem value="4">4 minutos</SelectItem>
+              <SelectItem value="5">5 minutos</SelectItem>
+              <SelectItem value="6">6 minutos</SelectItem>
+              <SelectItem value="7">7 minutos</SelectItem>
+              <SelectItem value="8">8 minutos</SelectItem>
+              <SelectItem value="9">9 minutos</SelectItem>
+              <SelectItem value="10">10 minutos</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -237,18 +270,45 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
                   </div>
                   
                   <div>
-                    <Label>URL {item.type === 'image' ? 'da Imagem' : 'do Dashboard'}</Label>
-                    <Input
-                      value={item.url}
-                      onChange={(e) => updateItem(item.id, { url: e.target.value })}
-                      placeholder={item.type === 'image' ? 'https://exemplo.com/imagem.jpg' : 'https://app.powerbi.com/...'}
-                      className="text-sm font-mono break-all"
-                    />
+                    <Label>
+                      {item.type === 'image' ? 'Arquivo de Imagem' : 'URL do Dashboard'}
+                    </Label>
+                    {item.type === 'image' ? (
+                      <div className="space-y-2">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleImageUpload(e, item.id)}
+                          className="text-sm"
+                        />
+                        {item.url && (
+                          <div className="flex items-center space-x-2">
+                            <img 
+                              src={item.url} 
+                              alt="Preview" 
+                              className="w-16 h-16 object-cover rounded border"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-muted-foreground truncate">
+                                {item.url.split('/').pop()}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <Input
+                        value={item.url}
+                        onChange={(e) => updateItem(item.id, { url: e.target.value })}
+                        placeholder="https://app.powerbi.com/..."
+                        className="text-sm font-mono"
+                      />
+                    )}
                   </div>
                   
                   <div className="flex justify-between items-center">
                     <div className="flex-1 mr-4">
-                      <Label>Tempo de Exibição (segundos)</Label>
+                      <Label>Tempo de Exibição (minutos)</Label>
                       <Select 
                         value={item.display_time.toString()} 
                         onValueChange={(value) => updateItem(item.id, { display_time: parseInt(value) })}
@@ -257,12 +317,16 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="5">5 segundos</SelectItem>
-                          <SelectItem value="10">10 segundos</SelectItem>
-                          <SelectItem value="15">15 segundos</SelectItem>
-                          <SelectItem value="20">20 segundos</SelectItem>
-                          <SelectItem value="30">30 segundos</SelectItem>
-                          <SelectItem value="60">1 minuto</SelectItem>
+                          <SelectItem value="1">1 minuto</SelectItem>
+                          <SelectItem value="2">2 minutos</SelectItem>
+                          <SelectItem value="3">3 minutos</SelectItem>
+                          <SelectItem value="4">4 minutos</SelectItem>
+                          <SelectItem value="5">5 minutos</SelectItem>
+                          <SelectItem value="6">6 minutos</SelectItem>
+                          <SelectItem value="7">7 minutos</SelectItem>
+                          <SelectItem value="8">8 minutos</SelectItem>
+                          <SelectItem value="9">9 minutos</SelectItem>
+                          <SelectItem value="10">10 minutos</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
