@@ -134,73 +134,77 @@ export default function PresentationView() {
   const currentItem = items[currentIndex];
 
   return (
-    <div className="h-screen w-screen bg-black overflow-hidden relative">
-      {currentItem?.type === 'image' && currentItem.url && (
-        <div className="h-full w-full flex items-center justify-center">
-          <img
-            src={currentItem.url}
-            alt={currentItem.title}
-            className="max-h-full max-w-full object-contain"
-            onError={(e) => {
-              console.error('Error loading image:', currentItem.url);
-              e.currentTarget.style.display = 'none';
-            }}
-          />
+    <div className="h-screen w-screen bg-black overflow-hidden flex flex-col">
+      {/* Status bar */}
+      <div className="bg-black/90 text-white px-4 py-2 flex items-center justify-between text-sm border-b border-white/10">
+        <div className="flex items-center gap-4">
+          <span className="font-medium">{currentItem?.title}</span>
+          <span className="text-white/70">
+            {currentIndex + 1} de {items.length}
+          </span>
         </div>
-      )}
-
-      {currentItem?.type === 'powerbi' && currentItem.url && (
-        <iframe
-          src={currentItem.url}
-          className="h-full w-full border-0"
-          title={currentItem.title}
-          allow="fullscreen"
-          onError={() => {
-            console.error('Error loading Power BI dashboard:', currentItem.url);
-          }}
-        />
-      )}
-
-      {/* Progress indicator */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
-        {items.map((_, index) => (
-          <div
-            key={index}
-            className={`w-3 h-3 rounded-full transition-colors ${
-              index === currentIndex ? 'bg-white' : 'bg-white/30'
-            }`}
-          />
-        ))}
+        
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-white/70">Próximo:</span>
+            <span className="font-mono">
+              {Math.floor(slideTimeRemaining / 60)}:{(slideTimeRemaining % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+          
+          {presentation && (
+            <div className="flex items-center gap-2">
+              <span className="text-white/70">Atualização:</span>
+              <span className="font-mono">
+                {Math.floor(refreshTimeRemaining / 60)}:{(refreshTimeRemaining % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Title overlay */}
-      {currentItem && (
-        <div className="absolute top-4 left-4 bg-black/50 text-white px-4 py-2 rounded-lg">
-          <div className="text-lg font-semibold">{currentItem.title}</div>
-          <div className="text-sm opacity-75">
-            {currentIndex + 1} de {items.length}
+      {/* Main content area */}
+      <div className="flex-1 relative">
+        {currentItem?.type === 'image' && currentItem.url && (
+          <div className="h-full w-full flex items-center justify-center">
+            <img
+              src={currentItem.url}
+              alt={currentItem.title}
+              className="max-h-full max-w-full object-contain"
+              onError={(e) => {
+                console.error('Error loading image:', currentItem.url);
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Timer overlays */}
-      {currentItem && (
-        <div className="absolute top-4 right-4 bg-black/50 text-white px-4 py-2 rounded-lg">
-          <div className="text-sm font-medium">Próximo slide em:</div>
-          <div className="text-lg font-mono">
-            {Math.floor(slideTimeRemaining / 60)}:{(slideTimeRemaining % 60).toString().padStart(2, '0')}
-          </div>
-        </div>
-      )}
+        {currentItem?.type === 'powerbi' && currentItem.url && (
+          <iframe
+            src={currentItem.url}
+            className="h-full w-full border-0"
+            title={currentItem.title}
+            allow="fullscreen"
+            onError={() => {
+              console.error('Error loading Power BI dashboard:', currentItem.url);
+            }}
+          />
+        )}
+      </div>
 
-      {presentation && (
-        <div className="absolute bottom-4 right-4 bg-black/50 text-white px-4 py-2 rounded-lg">
-          <div className="text-sm font-medium">Atualização em:</div>
-          <div className="text-lg font-mono">
-            {Math.floor(refreshTimeRemaining / 60)}:{(refreshTimeRemaining % 60).toString().padStart(2, '0')}
-          </div>
+      {/* Bottom progress bar */}
+      <div className="bg-black/90 p-2 flex justify-center">
+        <div className="flex space-x-1">
+          {items.map((_, index) => (
+            <div
+              key={index}
+              className={`w-8 h-1 rounded-full transition-colors ${
+                index === currentIndex ? 'bg-white' : 'bg-white/30'
+              }`}
+            />
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
