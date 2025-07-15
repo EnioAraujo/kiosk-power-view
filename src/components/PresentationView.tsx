@@ -9,6 +9,26 @@ type PresentationItem = Tables<'presentation_items'>;
 export default function PresentationView() {
   const { id } = useParams<{ id: string }>();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideTimeRemaining, setSlideTimeRemaining] = useState(0);
+  const [refreshTimeRemaining, setRefreshTimeRemaining] = useState(0);
+
+  // Fetch presentation data
+  const { data: presentation } = useQuery({
+    queryKey: ['presentation', id],
+    queryFn: async () => {
+      if (!id) throw new Error('No presentation ID provided');
+      
+      const { data, error } = await supabase
+        .from('presentations')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
 
   // Fetch presentation items
   const { data: items = [], isLoading, error } = useQuery({
@@ -47,6 +67,49 @@ export default function PresentationView() {
   useEffect(() => {
     setCurrentIndex(0);
   }, [items]);
+
+  // Countdown timer for current slide
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    const currentItem = items[currentIndex];
+    if (!currentItem) return;
+
+    const startTime = Date.now();
+    const duration = currentItem.display_time * 60000; // Convert minutes to milliseconds
+    setSlideTimeRemaining(Math.ceil(duration / 1000));
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, Math.ceil((duration - elapsed) / 1000));
+      setSlideTimeRemaining(remaining);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentIndex, items]);
+
+  // Countdown timer for refresh
+  useEffect(() => {
+    if (!presentation) return;
+
+    const refreshInterval = presentation.refresh_interval * 60000; // Convert minutes to milliseconds
+    let refreshStartTime = Date.now();
+    setRefreshTimeRemaining(Math.ceil(refreshInterval / 1000));
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - refreshStartTime;
+      const remaining = Math.max(0, Math.ceil((refreshInterval - elapsed) / 1000));
+      setRefreshTimeRemaining(remaining);
+      
+      // Reset timer when it reaches 0
+      if (remaining === 0) {
+        refreshStartTime = Date.now();
+        setRefreshTimeRemaining(Math.ceil(refreshInterval / 1000));
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [presentation]);
 
   if (isLoading) {
     return (
@@ -116,6 +179,25 @@ export default function PresentationView() {
           <div className="text-lg font-semibold">{currentItem.title}</div>
           <div className="text-sm opacity-75">
             {currentIndex + 1} de {items.length}
+          </div>
+        </div>
+      )}
+
+      {/* Timer overlays */}
+      {currentItem && (
+        <div className="absolute top-4 right-4 bg-black/50 text-white px-4 py-2 rounded-lg">
+          <div className="text-sm font-medium">Próximo slide em:</div>
+          <div className="text-lg font-mono">
+            {Math.floor(slideTimeRemaining / 60)}:{(slideTimeRemaining % 60).toString().padStart(2, '0')}
+          </div>
+        </div>
+      )}
+
+      {presentation && (
+        <div className="absolute bottom-4 right-4 bg-black/50 text-white px-4 py-2 rounded-lg">
+          <div className="text-sm font-medium">Atualização em:</div>
+          <div className="text-lg font-mono">
+            {Math.floor(refreshTimeRemaining / 60)}:{(refreshTimeRemaining % 60).toString().padStart(2, '0')}
           </div>
         </div>
       )}
