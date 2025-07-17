@@ -125,29 +125,13 @@ export default function PresentationManager() {
     window.open(`/presentation/${id}`, '_blank');
   };
 
-  const sharePresentation = async (id: string) => {
-    try {
-      const shareUrl = `${window.location.origin}/presentation/${id}`;
-      
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        toast.success('Link copiado para a área de transferência!');
-      } else {
-        // Fallback for browsers without clipboard API
-        const textArea = document.createElement('textarea');
-        textArea.value = shareUrl;
-        textArea.style.position = 'fixed';
-        textArea.style.opacity = '0';
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        toast.success('Link copiado para a área de transferência!');
-      }
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
-      toast.error('Erro ao copiar link. Tente novamente.');
-    }
+  const sharePresentation = (id: string) => {
+    const shareUrl = `${window.location.origin}/presentation/${id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      toast.success('Link copiado para a área de transferência!');
+    }).catch(() => {
+      toast.error('Erro ao copiar link');
+    });
   };
 
   if (isLoading) {

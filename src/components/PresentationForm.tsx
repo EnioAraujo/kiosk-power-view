@@ -110,25 +110,13 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedTitle = title.trim();
-    
-    if (!trimmedTitle) {
+    if (!title.trim()) {
       toast.error('Nome da apresentação é obrigatório');
       return;
     }
     
-    if (trimmedTitle.length < 2) {
-      toast.error('Nome da apresentação deve ter pelo menos 2 caracteres');
-      return;
-    }
-    
-    if (refreshInterval < 1 || refreshInterval > 10) {
-      toast.error('Intervalo de atualização deve estar entre 1 e 10 minutos');
-      return;
-    }
-    
     onSubmit({ 
-      title: trimmedTitle, 
+      title: title.trim(), 
       refresh_interval: refreshInterval 
     });
   };
@@ -149,22 +137,6 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
   };
 
   const updateItem = (id: string, updates: Partial<PresentationItem>) => {
-    // Validate URL if it's being updated
-    if (updates.url && updates.url.trim() && updates.url !== '') {
-      try {
-        new URL(updates.url);
-      } catch {
-        toast.error('URL inválida. Por favor, insira uma URL válida.');
-        return;
-      }
-    }
-    
-    // Validate display_time
-    if (updates.display_time !== undefined && (updates.display_time < 1 || updates.display_time > 10)) {
-      toast.error('Tempo de exibição deve estar entre 1 e 10 minutos');
-      return;
-    }
-    
     updateItemMutation.mutate({ id, ...updates });
   };
 
@@ -178,30 +150,12 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Por favor, selecione apenas arquivos de imagem');
-      return;
-    }
-
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      toast.error('Arquivo muito grande. Tamanho máximo: 10MB');
-      return;
-    }
-
     try {
-      // Upload to Supabase Storage with better file naming
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-      
+      // Upload to Supabase Storage
+      const fileName = `${Date.now()}_${file.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('presentation-images')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
+        .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
@@ -210,16 +164,13 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
         .from('presentation-images')
         .getPublicUrl(fileName);
 
-      // Update item with the new URL and original filename
-      updateItem(itemId, { 
-        url: publicUrl,
-        title: file.name.split('.')[0] // Use filename without extension as title
-      });
+      // Update item with the new URL
+      updateItem(itemId, { url: publicUrl });
       
       toast.success('Imagem carregada com sucesso!');
     } catch (error) {
       console.error('Error uploading image:', error);
-      toast.error('Erro ao carregar imagem. Tente novamente.');
+      toast.error('Erro ao carregar imagem');
     }
   };
 

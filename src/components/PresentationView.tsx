@@ -1,20 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 
 type PresentationItem = Tables<'presentation_items'>;
-
-// Utility function to validate URLs
-const isValidUrl = (url: string): boolean => {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export default function PresentationView() {
   const { id } = useParams<{ id: string }>();
@@ -59,12 +49,12 @@ export default function PresentationView() {
     refetchInterval: 30000, // Refetch every 30 seconds to get updates
   });
 
-  // Auto-advance slides with proper cleanup
+  // Auto-advance slides
   useEffect(() => {
     if (items.length === 0) return;
 
     const currentItem = items[currentIndex];
-    if (!currentItem || currentItem.display_time <= 0) return;
+    if (!currentItem) return;
 
     const timer = setTimeout(() => {
       setCurrentIndex((prev) => (prev + 1) % items.length);
@@ -78,35 +68,31 @@ export default function PresentationView() {
     setCurrentIndex(0);
   }, [items]);
 
-  // Memoize current item to prevent unnecessary re-renders
-  const currentItem = useMemo(() => items[currentIndex], [items, currentIndex]);
-
-  // Countdown timer for current slide with proper cleanup
+  // Countdown timer for current slide
   useEffect(() => {
-    if (!currentItem || currentItem.display_time <= 0) return;
+    if (items.length === 0) return;
+
+    const currentItem = items[currentIndex];
+    if (!currentItem) return;
 
     const startTime = Date.now();
-    const duration = currentItem.display_time * 60000;
+    const duration = currentItem.display_time * 60000; // Convert minutes to milliseconds
     setSlideTimeRemaining(Math.ceil(duration / 1000));
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const remaining = Math.max(0, Math.ceil((duration - elapsed) / 1000));
       setSlideTimeRemaining(remaining);
-      
-      if (remaining === 0) {
-        clearInterval(interval);
-      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentItem]);
+  }, [currentIndex, items]);
 
-  // Countdown timer for refresh with proper cleanup
+  // Countdown timer for refresh
   useEffect(() => {
-    if (!presentation || presentation.refresh_interval <= 0) return;
+    if (!presentation) return;
 
-    const refreshInterval = presentation.refresh_interval * 60000;
+    const refreshInterval = presentation.refresh_interval * 60000; // Convert minutes to milliseconds
     let refreshStartTime = Date.now();
     setRefreshTimeRemaining(Math.ceil(refreshInterval / 1000));
 
@@ -115,6 +101,7 @@ export default function PresentationView() {
       const remaining = Math.max(0, Math.ceil((refreshInterval - elapsed) / 1000));
       setRefreshTimeRemaining(remaining);
       
+      // Reset timer when it reaches 0
       if (remaining === 0) {
         refreshStartTime = Date.now();
         setRefreshTimeRemaining(Math.ceil(refreshInterval / 1000));
@@ -144,23 +131,7 @@ export default function PresentationView() {
     );
   }
 
-  // Format time display helper
-  const formatTime = useCallback((seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }, []);
-
-  if (!currentItem) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <div className="text-6xl mb-4">⏳</div>
-          <div className="text-2xl mb-2">Carregando item...</div>
-        </div>
-      </div>
-    );
-  }
+  const currentItem = items[currentIndex];
 
   return (
     <div className="h-screen w-screen bg-black overflow-hidden flex flex-col">
@@ -176,83 +147,48 @@ export default function PresentationView() {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="text-white/70">Próximo:</span>
-            <span className="font-mono text-green-400">
-              {formatTime(slideTimeRemaining)}
+            <span className="font-mono">
+              {Math.floor(slideTimeRemaining / 60)}:{(slideTimeRemaining % 60).toString().padStart(2, '0')}
             </span>
           </div>
           
           {presentation && (
             <div className="flex items-center gap-2">
               <span className="text-white/70">Atualização:</span>
-              <span className="font-mono text-blue-400">
-                {formatTime(refreshTimeRemaining)}
+              <span className="font-mono">
+                {Math.floor(refreshTimeRemaining / 60)}:{(refreshTimeRemaining % 60).toString().padStart(2, '0')}
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Main content area with error handling */}
+      {/* Main content area */}
       <div className="flex-1 relative">
         {currentItem?.type === 'image' && currentItem.url && (
-          <div className="h-full w-full flex items-center justify-center bg-gray-900">
-            {isValidUrl(currentItem.url) ? (
-              <img
-                src={currentItem.url}
-                alt={currentItem.title}
-                className="max-h-full max-w-full object-contain"
-                onError={(e) => {
-                  console.error('Error loading image:', currentItem.url);
-                  e.currentTarget.style.display = 'none';
-                  const errorDiv = document.createElement('div');
-                  errorDiv.className = 'text-white text-center p-8';
-                  errorDiv.innerHTML = `
-                    <div class="text-6xl mb-4">🖼️</div>
-                    <div class="text-xl">Erro ao carregar imagem</div>
-                    <div class="text-sm text-gray-400 mt-2">${currentItem.title}</div>
-                  `;
-                  e.currentTarget.parentNode?.appendChild(errorDiv);
-                }}
-                onLoad={() => {
-                  console.log('Image loaded successfully:', currentItem.url);
-                }}
-              />
-            ) : (
-              <div className="text-white text-center p-8">
-                <div className="text-6xl mb-4">⚠️</div>
-                <div className="text-xl">URL de imagem inválida</div>
-                <div className="text-sm text-gray-400 mt-2">{currentItem.title}</div>
-              </div>
-            )}
+          <div className="h-full w-full flex items-center justify-center">
+            <img
+              src={currentItem.url}
+              alt={currentItem.title}
+              className="max-h-full max-w-full object-contain"
+              onError={(e) => {
+                console.error('Error loading image:', currentItem.url);
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
         )}
 
         {currentItem?.type === 'powerbi' && currentItem.url && (
-          <div className="h-full w-full">
-            {isValidUrl(currentItem.url) ? (
-              <iframe
-                src={currentItem.url}
-                className="h-full w-full border-0"
-                title={currentItem.title}
-                allow="fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-                onError={() => {
-                  console.error('Error loading Power BI dashboard:', currentItem.url);
-                }}
-                onLoad={() => {
-                  console.log('Power BI dashboard loaded successfully:', currentItem.url);
-                }}
-              />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-black text-white">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">📊</div>
-                  <div className="text-xl">URL do Power BI inválida</div>
-                  <div className="text-sm text-gray-400 mt-2">{currentItem.title}</div>
-                </div>
-              </div>
-            )}
-          </div>
+          <iframe
+            src={currentItem.url}
+            className="h-full w-full border-0"
+            title={currentItem.title}
+            allow="fullscreen"
+            onError={() => {
+              console.error('Error loading Power BI dashboard:', currentItem.url);
+            }}
+          />
         )}
       </div>
 
