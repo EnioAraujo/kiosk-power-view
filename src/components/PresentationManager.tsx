@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Play, Edit, Trash2, Settings } from 'lucide-react';
+import { Plus, Play, Edit, Trash2, Settings, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -125,6 +125,15 @@ export default function PresentationManager() {
     window.open(`/presentation/${id}`, '_blank');
   };
 
+  const sharePresentation = (id: string) => {
+    const shareUrl = `${window.location.origin}/presentation/${id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      toast.success('Link copiado para a área de transferência!');
+    }).catch(() => {
+      toast.error('Erro ao copiar link');
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -193,6 +202,15 @@ export default function PresentationManager() {
                   >
                     <Play className="w-4 h-4 mr-2" />
                     Reproduzir
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => sharePresentation(presentation.id)}
+                    title="Compartilhar apresentação"
+                  >
+                    <Share2 className="w-4 h-4" />
                   </Button>
                   
                   <Dialog open={isEditOpen && selectedPresentation?.id === presentation.id} 
