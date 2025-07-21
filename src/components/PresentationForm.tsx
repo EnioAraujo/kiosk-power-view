@@ -230,8 +230,14 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
         }
       }));
 
-      // Upload para Supabase Storage
-      const fileName = `${Date.now()}_${compressedFile.name}`;
+      // Upload para Supabase Storage - sanitizar nome do arquivo
+      const sanitizedName = compressedFile.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+        .replace(/[^a-zA-Z0-9.-]/g, '_') // Substitui caracteres especiais por underscore
+        .replace(/_{2,}/g, '_'); // Remove underscores duplos
+      
+      const fileName = `${Date.now()}_${sanitizedName}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('presentation-images')
         .upload(fileName, compressedFile);
