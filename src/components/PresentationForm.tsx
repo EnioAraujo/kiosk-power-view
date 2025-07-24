@@ -291,6 +291,7 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Digite o nome da apresentação"
             required
+            autoComplete="off"
           />
         </div>
         
@@ -318,6 +319,12 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
         {!isEditing && (
           <Button type="submit" disabled={isSubmitting} className="w-full">
             {isSubmitting ? 'Criando...' : 'Criar Apresentação'}
+          </Button>
+        )}
+
+        {isEditing && (
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
           </Button>
         )}
       </form>

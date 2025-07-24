@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -11,6 +13,7 @@ export default function PresentationView() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slideTimeRemaining, setSlideTimeRemaining] = useState(0);
   const [refreshTimeRemaining, setRefreshTimeRemaining] = useState(0);
+  const [isAutoPlay, setIsAutoPlay] = useState(true);
 
   // Fetch presentation data
   const { data: presentation } = useQuery({
@@ -51,7 +54,7 @@ export default function PresentationView() {
 
   // Auto-advance slides
   useEffect(() => {
-    if (items.length === 0) return;
+    if (items.length === 0 || !isAutoPlay) return;
 
     const currentItem = items[currentIndex];
     if (!currentItem) return;
@@ -61,7 +64,7 @@ export default function PresentationView() {
     }, currentItem.display_time * 60000);
 
     return () => clearTimeout(timer);
-  }, [currentIndex, items]);
+  }, [currentIndex, items, isAutoPlay]);
 
   // Reset current index when items change
   useEffect(() => {
@@ -87,6 +90,19 @@ export default function PresentationView() {
 
     return () => clearInterval(interval);
   }, [currentIndex, items]);
+
+  // Manual navigation functions
+  const goToPrevious = () => {
+    setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
+  };
+
+  const goToNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % items.length);
+  };
+
+  const toggleAutoPlay = () => {
+    setIsAutoPlay(!isAutoPlay);
+  };
 
   // Countdown timer for refresh
   useEffect(() => {
@@ -145,6 +161,34 @@ export default function PresentationView() {
         </div>
         
         <div className="flex items-center gap-6">
+          {/* Navigation Controls */}
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={goToPrevious}
+              className="h-8 w-8 p-0 text-white hover:bg-white/20"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleAutoPlay}
+              className="h-8 w-8 p-0 text-white hover:bg-white/20"
+            >
+              {isAutoPlay ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={goToNext}
+              className="h-8 w-8 p-0 text-white hover:bg-white/20"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          
           <div className="flex items-center gap-2">
             <span className="text-white/70">Próximo:</span>
             <span className="font-mono">

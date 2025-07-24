@@ -80,6 +80,30 @@ export default function PresentationManager() {
     },
   });
 
+  // Update presentation settings mutation
+  const updateSettingsMutation = useMutation({
+    mutationFn: async ({ id, title, refresh_interval }: { id: string; title: string; refresh_interval: number }) => {
+      const { data, error } = await supabase
+        .from('presentations')
+        .update({ title, refresh_interval })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentations'] });
+      queryClient.invalidateQueries({ queryKey: ['presentation'] });
+      toast.success('Apresentação atualizada com sucesso!');
+    },
+    onError: (error) => {
+      console.error('Error updating presentation:', error);
+      toast.error('Erro ao atualizar apresentação');
+    },
+  });
+
   // Delete presentation mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -234,11 +258,18 @@ export default function PresentationManager() {
                       {selectedPresentation && (
                         <PresentationForm
                           presentation={selectedPresentation}
-                          onSubmit={() => {
-                            queryClient.invalidateQueries({ queryKey: ['presentations'] });
+                          onSubmit={(data) => {
+                            if (data && selectedPresentation) {
+                              updateSettingsMutation.mutate({
+                                id: selectedPresentation.id,
+                                title: data.title,
+                                refresh_interval: data.refresh_interval
+                              });
+                            }
                             setIsEditOpen(false);
                             setSelectedPresentation(null);
                           }}
+                          isSubmitting={updateSettingsMutation.isPending}
                         />
                       )}
                     </DialogContent>
