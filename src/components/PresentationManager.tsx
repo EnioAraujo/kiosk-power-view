@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Play, Edit, Trash2, Settings, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import PresentationForm from './PresentationForm';
 import EditableTitle from './EditableTitle';
+import AuthDialog from './AuthDialog';
 
 type Presentation = Tables<'presentations'>;
 
@@ -19,6 +19,8 @@ export default function PresentationManager() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const queryClient = useQueryClient();
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
 
   // Fetch presentations
   const { data: presentations = [], isLoading } = useQuery({
@@ -33,6 +35,14 @@ export default function PresentationManager() {
       return data;
     },
   });
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Create presentation mutation
   const createMutation = useMutation({
@@ -132,14 +142,29 @@ export default function PresentationManager() {
   });
 
   const handleCreatePresentation = (data: { title: string; refresh_interval: number }) => {
+    if (!session) {
+      toast.error('Faça login para criar apresentações');
+      setIsAuthOpen(true);
+      return;
+    }
     createMutation.mutate(data);
   };
 
   const handleUpdateTitle = (id: string, title: string) => {
+    if (!session) {
+      toast.error('Faça login para editar');
+      setIsAuthOpen(true);
+      return;
+    }
     updateTitleMutation.mutate({ id, title });
   };
 
   const handleDelete = (id: string) => {
+    if (!session) {
+      toast.error('Faça login para deletar');
+      setIsAuthOpen(true);
+      return;
+    }
     if (window.confirm('Tem certeza que deseja deletar esta apresentação?')) {
       deleteMutation.mutate(id);
     }
@@ -179,12 +204,18 @@ export default function PresentationManager() {
         </div>
         
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Apresentação
-            </Button>
-          </DialogTrigger>
+          <Button
+            onClick={() => {
+              if (session) setIsCreateOpen(true);
+              else {
+                setIsAuthOpen(true);
+                toast.error('Faça login para criar apresentações');
+              }
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nova Apresentação
+          </Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Criar Nova Apresentação</DialogTitle>
@@ -246,7 +277,15 @@ export default function PresentationManager() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSelectedPresentation(presentation)}
+                        onClick={() => {
+                          if (!session) {
+                            setIsAuthOpen(true);
+                            toast.error('Faça login para editar');
+                            return;
+                          }
+                          setSelectedPresentation(presentation);
+                          setIsEditOpen(true);
+                        }}
                       >
                         <Settings className="w-4 h-4" />
                       </Button>
@@ -302,6 +341,15 @@ export default function PresentationManager() {
           </Button>
         </div>
       )}
+
+      <AuthDialog
+        open={isAuthOpen}
+        onOpenChange={setIsAuthOpen}
+        onAuthSuccess={() => {
+          setIsAuthOpen(false);
+          toast.success('Login realizado');
+        }}
+      />
     </div>
   );
 }
