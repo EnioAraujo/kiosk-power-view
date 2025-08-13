@@ -1,6 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, GripVertical, Image, BarChart3, Upload, Loader2 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import {
+  CSS,
+} from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +42,7 @@ interface PresentationFormProps {
 export default function PresentationForm({ presentation, onSubmit, isSubmitting = false }: PresentationFormProps) {
   const [title, setTitle] = useState(presentation?.title || '');
   const [refreshInterval, setRefreshInterval] = useState(presentation?.refresh_interval || 5);
+  const [localItems, setLocalItems] = useState<PresentationItem[]>([]);
   const [uploadStates, setUploadStates] = useState<Record<string, {
     isCompressing: boolean;
     isUploading: boolean;
@@ -30,6 +50,14 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
     compressedSize?: number;
   }>>({});
   const queryClient = useQueryClient();
+
+  // Configure drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const isEditing = !!presentation;
 
@@ -50,6 +78,11 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
     },
     enabled: !!presentation?.id,
   });
+
+  // Sync items with local state for drag-and-drop
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
 
   // Add item mutation
   const addItemMutation = useMutation({
@@ -112,6 +145,53 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
     onError: (error) => {
       console.error('Error deleting item:', error);
       toast.error('Erro ao remover item');
+    },
+  });
+
+  // Reorder items mutation
+  const reorderItemsMutation = useMutation({
+    mutationFn: async (reorderedItems: PresentationItem[]) => {
+      const updates = reorderedItems.map((item, index) => 
+        supabase
+          .from('presentation_items')
+          .update({ order_index: index })
+          .eq('id', item.id)
+      );
+      
+      const results = await Promise.all(updates);
+      
+      for (const result of results) {
+        if (result.error) throw result.error;
+      }
+      
+      return reorderedItems;
+    },
+    onMutate: async (reorderedItems) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['presentation-items', presentation?.id] });
+      
+      // Snapshot the previous value
+      const previousItems = queryClient.getQueryData(['presentation-items', presentation?.id]);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['presentation-items', presentation?.id], reorderedItems);
+      
+      return { previousItems };
+    },
+    onError: (error, reorderedItems, context) => {
+      // Rollback on error
+      if (context?.previousItems) {
+        queryClient.setQueryData(['presentation-items', presentation?.id], context.previousItems);
+        setLocalItems(context.previousItems as PresentationItem[]);
+      }
+      console.error('Error reordering items:', error);
+      toast.error('Não foi possível salvar a nova ordem');
+    },
+    onSuccess: () => {
+      toast.success('Ordem atualizada!');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentation-items', presentation?.id] });
     },
   });
 
@@ -179,10 +259,33 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
       title: type === 'image' ? 'Nova Imagem' : 'Novo Dashboard',
       url: '',
       display_time: 1,
-      order_index: items.length,
+      order_index: localItems.length,
     };
     
     addItemMutation.mutate(newItem);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = localItems.findIndex(item => item.id === active.id);
+    const newIndex = localItems.findIndex(item => item.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const reorderedItems = arrayMove(localItems, oldIndex, newIndex);
+    
+    // Update local state immediately for smooth UX
+    setLocalItems(reorderedItems);
+    
+    // Persist to database
+    reorderItemsMutation.mutate(reorderedItems);
   };
 
   const updateItem = (id: string, updates: Partial<PresentationItem>) => {
@@ -280,6 +383,167 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // SortableItem component for drag-and-drop
+  const SortableItem = ({ 
+    item, 
+    index, 
+    isDragging = false 
+  }: { 
+    item: PresentationItem; 
+    index: number; 
+    isDragging?: boolean;
+  }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging: isSortableDragging,
+    } = useSortable({ id: item.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isSortableDragging ? 0.5 : 1,
+    };
+
+    const uploadState = uploadStates[item.id];
+    const isDisabled = uploadState?.isCompressing || uploadState?.isUploading || reorderItemsMutation.isPending;
+
+    return (
+      <div ref={setNodeRef} style={style}>
+        <Card className={isSortableDragging ? 'ring-2 ring-primary' : ''}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <div
+                {...attributes}
+                {...listeners}
+                className={`cursor-move p-1 rounded hover:bg-accent transition-colors ${
+                  isDisabled ? 'cursor-not-allowed opacity-50' : ''
+                }`}
+                style={{ touchAction: 'none' }}
+              >
+                <GripVertical className="w-4 h-4 text-muted-foreground" />
+              </div>
+              {getItemIcon(item.type)}
+              Item {index + 1} - {item.type === 'image' ? 'Imagem' : 'Power BI'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label>Título</Label>
+              <Input
+                value={item.title}
+                onChange={(e) => updateItem(item.id, { title: e.target.value })}
+                placeholder="Título do item"
+                className="text-sm"
+              />
+            </div>
+            
+            <div>
+              <Label>
+                {item.type === 'image' ? 'Arquivo de Imagem' : 'URL do Dashboard'}
+              </Label>
+              {item.type === 'image' ? (
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                    onChange={(e) => handleImageUpload(e, item.id)}
+                    className="text-sm"
+                    disabled={uploadState?.isCompressing || uploadState?.isUploading}
+                  />
+                  
+                  {uploadState && (
+                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {uploadState.isCompressing && (
+                        <span>Comprimindo imagem...</span>
+                      )}
+                      {uploadState.isUploading && (
+                        <span>
+                          Fazendo upload... 
+                          {uploadState.originalSize && uploadState.compressedSize && (
+                            <span className="ml-1">
+                              ({formatFileSize(uploadState.originalSize)} → {formatFileSize(uploadState.compressedSize)})
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
+                  {item.url && !uploadState && (
+                    <div className="flex items-center space-x-2">
+                      <img 
+                        src={item.url} 
+                        alt="Preview" 
+                        className="w-16 h-16 object-cover rounded border"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-muted-foreground truncate">
+                          {item.url.split('/').pop()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Formatos aceitos: JPG, PNG, WebP, GIF. Tamanho máximo: 20MB (será comprimido automaticamente).
+                  </p>
+                </div>
+              ) : (
+                <Input
+                  value={item.url}
+                  onChange={(e) => updateItem(item.id, { url: e.target.value })}
+                  placeholder="https://app.powerbi.com/..."
+                  className="text-sm font-mono"
+                />
+              )}
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <div className="flex-1 mr-4">
+                <Label>Tempo de Exibição (minutos)</Label>
+                <Select 
+                  value={item.display_time.toString()} 
+                  onValueChange={(value) => updateItem(item.id, { display_time: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 minuto</SelectItem>
+                    <SelectItem value="2">2 minutos</SelectItem>
+                    <SelectItem value="3">3 minutos</SelectItem>
+                    <SelectItem value="4">4 minutos</SelectItem>
+                    <SelectItem value="5">5 minutos</SelectItem>
+                    <SelectItem value="6">6 minutos</SelectItem>
+                    <SelectItem value="7">7 minutos</SelectItem>
+                    <SelectItem value="8">8 minutos</SelectItem>
+                    <SelectItem value="9">9 minutos</SelectItem>
+                    <SelectItem value="10">10 minutos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => deleteItem(item.id)}
+                disabled={deleteItemMutation.isPending || uploadState?.isCompressing || uploadState?.isUploading}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -357,134 +621,21 @@ export default function PresentationForm({ presentation, onSubmit, isSubmitting 
             </div>
           </div>
 
-          <div className="space-y-3">
-            {items.map((item, index) => {
-              const uploadState = uploadStates[item.id];
-              
-              return (
-                <Card key={item.id}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm">
-                      <GripVertical className="w-4 h-4 text-muted-foreground" />
-                      {getItemIcon(item.type)}
-                      Item {index + 1} - {item.type === 'image' ? 'Imagem' : 'Power BI'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <Label>Título</Label>
-                      <Input
-                        value={item.title}
-                        onChange={(e) => updateItem(item.id, { title: e.target.value })}
-                        placeholder="Título do item"
-                        className="text-sm"
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label>
-                        {item.type === 'image' ? 'Arquivo de Imagem' : 'URL do Dashboard'}
-                      </Label>
-                      {item.type === 'image' ? (
-                        <div className="space-y-2">
-                          <Input
-                            type="file"
-                            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-                            onChange={(e) => handleImageUpload(e, item.id)}
-                            className="text-sm"
-                            disabled={uploadState?.isCompressing || uploadState?.isUploading}
-                          />
-                          
-                          {uploadState && (
-                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              {uploadState.isCompressing && (
-                                <span>Comprimindo imagem...</span>
-                              )}
-                              {uploadState.isUploading && (
-                                <span>
-                                  Fazendo upload... 
-                                  {uploadState.originalSize && uploadState.compressedSize && (
-                                    <span className="ml-1">
-                                      ({formatFileSize(uploadState.originalSize)} → {formatFileSize(uploadState.compressedSize)})
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          
-                          {item.url && !uploadState && (
-                            <div className="flex items-center space-x-2">
-                              <img 
-                                src={item.url} 
-                                alt="Preview" 
-                                className="w-16 h-16 object-cover rounded border"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-muted-foreground truncate">
-                                  {item.url.split('/').pop()}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                          
-                          <p className="text-xs text-muted-foreground">
-                            Formatos aceitos: JPG, PNG, WebP, GIF. Tamanho máximo: 20MB (será comprimido automaticamente).
-                          </p>
-                        </div>
-                      ) : (
-                        <Input
-                          value={item.url}
-                          onChange={(e) => updateItem(item.id, { url: e.target.value })}
-                          placeholder="https://app.powerbi.com/..."
-                          className="text-sm font-mono"
-                        />
-                      )}
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div className="flex-1 mr-4">
-                        <Label>Tempo de Exibição (minutos)</Label>
-                        <Select 
-                          value={item.display_time.toString()} 
-                          onValueChange={(value) => updateItem(item.id, { display_time: parseInt(value) })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1 minuto</SelectItem>
-                            <SelectItem value="2">2 minutos</SelectItem>
-                            <SelectItem value="3">3 minutos</SelectItem>
-                            <SelectItem value="4">4 minutos</SelectItem>
-                            <SelectItem value="5">5 minutos</SelectItem>
-                            <SelectItem value="6">6 minutos</SelectItem>
-                            <SelectItem value="7">7 minutos</SelectItem>
-                            <SelectItem value="8">8 minutos</SelectItem>
-                            <SelectItem value="9">9 minutos</SelectItem>
-                            <SelectItem value="10">10 minutos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteItem(item.id)}
-                        disabled={deleteItemMutation.isPending || uploadState?.isCompressing || uploadState?.isUploading}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={localItems.map(item => item.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {localItems.map((item, index) => (
+                  <SortableItem key={item.id} item={item} index={index} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
 
-          {items.length === 0 && (
+          {localItems.length === 0 && (
             <div className="text-center py-8 border-2 border-dashed border-muted-foreground/25 rounded-lg">
               <div className="text-4xl mb-2">📋</div>
               <p className="text-muted-foreground">

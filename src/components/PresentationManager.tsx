@@ -49,7 +49,7 @@ export default function PresentationManager() {
     mutationFn: async (newPresentation: { title: string; refresh_interval: number }) => {
       const { data, error } = await supabase
         .from('presentations')
-        .insert([newPresentation])
+        .insert([{ ...newPresentation, user_id: '' }]) // user_id will be set by trigger
         .select()
         .single();
       
