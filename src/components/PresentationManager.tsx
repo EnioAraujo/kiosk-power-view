@@ -47,9 +47,16 @@ export default function PresentationManager() {
   // Create presentation mutation
   const createMutation = useMutation({
     mutationFn: async (newPresentation: { title: string; refresh_interval: number }) => {
+      if (!session?.user?.id) {
+        throw new Error('Usuário não autenticado');
+      }
+      
       const { data, error } = await supabase
         .from('presentations')
-        .insert([{ ...newPresentation, user_id: '' }]) // user_id will be set by trigger
+        .insert([{
+          ...newPresentation,
+          user_id: session.user.id
+        }])
         .select()
         .single();
       
